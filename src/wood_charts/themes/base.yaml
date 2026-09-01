@@ -1,0 +1,39 @@
+canvas: {width: 1600, height: 800}
+colors:
+  primary: "#002F6C"
+  secondary: "#4A90C2"
+  neutral_strong: "#1B1B1B"
+  neutral: "#6B7280"
+  neutral_light: "#D1D5DB"
+  text_primary: "#1B1B1B"
+  text_secondary: "#4B5563"
+  text_muted: "#6B7280"
+  grid: "#E5E7EB"
+  zero_line: "#D1D5DB"
+  background: "#FFFFFF"
+  plot_background: "#FFFFFF"
+  white: "#FFFFFF"
+  derived:
+    area_alpha: 0.20
+    heatmap_weights: [0.08, 0.22, 0.45, 0.70, 1.0]
+    gauge_weights: [0.22, 0.45]
+typography:
+  family: "IBM Plex Sans, Arial, sans-serif"
+  title_size: 34
+  subtitle_size: 26
+  axis_title_size: 24
+  tick_size: 26
+  legend_size: 20
+  annotation_size: 24
+  source_size: 16
+  title_weight: 700
+  subtitle_weight: 400
+  axis_title_weight: 500
+  tick_weight: 400
+  legend_weight: 400
+  annotation_weight: 500
+  source_weight: 400
+margin: {left: 190, right: 190, top: 70, bottom: 160}
+marks: {line_width: 4, secondary_line_width: 3, marker_size: 9, bar_gap: 0.25, donut_hole: 0.50, donut_text_orientation: auto}
+positions: {accent_x_end: 0.10, accent_y_start: 1.275, accent_y_end: 1.295, title_y: 1.235, subtitle_y: 1.155, legend_y: 1.055, source_y: -0.20, axis_title_gutter: 32}
+hover_mode: "x unified"

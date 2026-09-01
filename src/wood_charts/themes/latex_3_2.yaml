@@ -1,0 +1,12 @@
+extends: base.yaml
+canvas: {width: 1200, height: 800}
+typography:
+  title_size: 26
+  subtitle_size: 20
+  axis_title_size: 18
+  tick_size: 20
+  legend_size: 15
+  annotation_size: 18
+  source_size: 15
+margin: {left: 190, right: 190, top: 175, bottom: 160}
+marks: {line_width: 3, secondary_line_width: 2, marker_size: 7}
