@@ -4,13 +4,14 @@
 constructors. Use it in any project that needs consistent, presentation-ready
 charts without recreating visual defaults for every figure.
 
-The package supplies three built-in canvas themes:
+The package supplies four built-in canvas themes:
 
 | Theme | Canvas |
 | --- | --- |
 | `powerpoint_2_1` | 1600 x 800 (2:1) |
 | `powerpoint_16_9` | 1600 x 900 (16:9) |
 | `latex_3_2` | 1200 x 800 (3:2) |
+| `notebook` | 960 x 600 (interactive notebook) |
 
 ## Installation
 
@@ -65,6 +66,17 @@ export_chart(figure, "sessions.svg", theme=theme)
 The figure is an ordinary `plotly.graph_objects.Figure`, so callers can apply
 project-specific Plotly updates after construction when needed.
 
+For responsive Jupyter output, use the compact `notebook` theme. It leaves the
+figure width unset, enables Plotly autosizing, and configures `.show()` to
+respond to notebook viewport changes. Axis titles and tick labels use Plotly's
+automatic margins, so they retain space as the viewport changes:
+
+```python
+theme = load_theme("notebook")
+figure = line_chart(data, x="month", y="sessions", theme=theme)
+figure.show()
+```
+
 ## Available charts
 
 Import chart constructors from `wood_charts.charts`:
@@ -96,6 +108,32 @@ All constructors accept a loaded `Theme` plus title, subtitle, source, and
 advanced layout overrides as appropriate to the chart type. Cartesian charts
 also support optional `x_axis_title` and `y_axis_title`; `combo_chart` supports
 `secondary_y_axis_title`.
+
+Single-series `bar_chart()` uses the theme primary color by default. To focus
+one category or a collection of categories, pass their category value(s); all
+remaining bars use the theme's neutral light gray:
+
+```python
+figure = bar_chart(data, "event_count", "event_type", theme, focus="purchase")
+weekly = bar_chart(data, "count", "day", theme, focus=["Monday", "Tuesday"])
+```
+
+Use `event_bands` with `line_chart()` to shade one or more event windows behind
+the data. Each band requires `start` and `end`; `label`, `opacity`, and
+`annotation_position` are optional.
+
+```python
+figure = line_chart(
+    data,
+    "date",
+    "sessions",
+    theme,
+    event_bands=[
+        {"start": "2026-01-10", "end": "2026-01-17", "label": "Campaign"},
+        {"start": "2026-02-01", "end": "2026-02-03", "opacity": 0.25},
+    ],
+)
+```
 
 ## Themes and exports
 

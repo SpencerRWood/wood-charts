@@ -25,8 +25,9 @@ def apply_default_design(
     typography = theme.typography
     colors = theme.colors
     figure.update_layout(
-        width=theme.width,
+        width=None if theme.responsive else theme.width,
         height=theme.height,
+        autosize=theme.responsive,
         paper_bgcolor=colors.background,
         plot_bgcolor=colors.plot_background,
         margin={
@@ -75,6 +76,7 @@ def apply_default_design(
             "weight": typography.tick_weight,
             "color": colors.text_secondary,
         },
+        automargin=theme.responsive,
     )
     figure.update_yaxes(
         showgrid=True,
@@ -96,22 +98,24 @@ def apply_default_design(
             "weight": typography.tick_weight,
             "color": colors.text_secondary,
         },
+        automargin=theme.responsive,
     )
     apply_axis_titles(
         figure, theme, x_axis_title=x_axis_title, y_axis_title=y_axis_title
     )
     if title:
-        figure.add_shape(
-            type="rect",
-            xref="paper",
-            yref="paper",
-            x0=0,
-            x1=theme.accent_x_end,
-            y0=theme.accent_y_start,
-            y1=theme.accent_y_end,
-            line={"width": 0},
-            fillcolor=colors.primary,
-        )
+        if theme.show_title_accent:
+            figure.add_shape(
+                type="rect",
+                xref="paper",
+                yref="paper",
+                x0=0,
+                x1=theme.accent_x_end,
+                y0=theme.accent_y_start,
+                y1=theme.accent_y_end,
+                line={"width": 0},
+                fillcolor=colors.primary,
+            )
         _annotation(
             figure,
             title,
@@ -155,10 +159,13 @@ def apply_axis_titles(
     y_axis_title: str | None = None,
     secondary_y_axis_title: str | None = None,
 ) -> go.Figure:
-    """Add optional titles inside fixed gutters, independent of tick-label width."""
+    """Add optional axis titles using responsive or fixed-gutter positioning."""
     if x_axis_title is not None:
         figure.update_xaxes(title_text=x_axis_title)
     if y_axis_title is not None:
+        if theme.responsive:
+            figure.update_yaxes(title_text=y_axis_title, automargin=True)
+            return figure
         figure.update_yaxes(title_text=None)
         if not any(
             annotation.text == y_axis_title and annotation.textangle == -90

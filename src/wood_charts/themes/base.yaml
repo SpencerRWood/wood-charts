@@ -33,6 +33,13 @@ typography:
   legend_weight: 400
   annotation_weight: 500
   source_weight: 400
+event_band:
+  fill_color: "#4A90C2"
+  opacity: 0.14
+  annotation_size: 16
+  annotation_color: "#4B5563"
+  annotation_weight: 500
+  annotation_position: top left
 margin: {left: 190, right: 190, top: 70, bottom: 160}
 marks: {line_width: 4, secondary_line_width: 3, marker_size: 9, bar_gap: 0.25, donut_hole: 0.50, donut_text_orientation: auto}
 positions: {accent_x_end: 0.10, accent_y_start: 1.275, accent_y_end: 1.295, title_y: 1.235, subtitle_y: 1.155, legend_y: 1.055, source_y: -0.20, axis_title_gutter: 32}

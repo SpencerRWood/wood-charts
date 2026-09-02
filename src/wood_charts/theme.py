@@ -86,6 +86,16 @@ class Colors:
 
 
 @dataclass(frozen=True)
+class EventBand:
+    fill_color: str
+    opacity: float
+    annotation_size: int
+    annotation_color: str
+    annotation_weight: int
+    annotation_position: str
+
+
+@dataclass(frozen=True)
 class Theme:
     """Fully resolved design tokens consumed by chart constructors."""
 
@@ -95,6 +105,7 @@ class Theme:
     margin: Margin
     typography: Typography
     colors: Colors
+    event_band: EventBand
     line_width: int
     secondary_line_width: int
     marker_size: int
@@ -110,6 +121,8 @@ class Theme:
     source_y: float
     axis_title_gutter: int
     hover_mode: str
+    responsive: bool = False
+    show_title_accent: bool = True
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -180,6 +193,13 @@ def _unit_interval(value: Any, name: str) -> float:
     return parsed
 
 
+def _boolean(value: Any, name: str) -> bool:
+    if not isinstance(value, bool):
+        msg = f"{name} must be a boolean."
+        raise ThemeConfigurationError(msg)
+    return value
+
+
 def _theme_from_mapping(name: str, config: dict[str, Any]) -> Theme:
     try:
         canvas = _required(config, "canvas", "root")
@@ -189,6 +209,7 @@ def _theme_from_mapping(name: str, config: dict[str, Any]) -> Theme:
         derived = _required(color_config, "derived", "colors")
         positions = _required(config, "positions", "root")
         marks = _required(config, "marks", "root")
+        event_band_config = _required(config, "event_band", "root")
         for color_name, value in color_config.items():
             if color_name != "derived":
                 hex_to_rgb(value)
@@ -249,6 +270,29 @@ def _theme_from_mapping(name: str, config: dict[str, Any]) -> Theme:
                 )
             },
         )
+        event_band = EventBand(
+            fill_color=str(_required(event_band_config, "fill_color", "event_band")),
+            opacity=_unit_interval(
+                _required(event_band_config, "opacity", "event_band"),
+                "event_band.opacity",
+            ),
+            annotation_size=_positive_int(
+                _required(event_band_config, "annotation_size", "event_band"),
+                "event_band.annotation_size",
+            ),
+            annotation_color=str(
+                _required(event_band_config, "annotation_color", "event_band")
+            ),
+            annotation_weight=_weight(
+                _required(event_band_config, "annotation_weight", "event_band"),
+                "event_band.annotation_weight",
+            ),
+            annotation_position=str(
+                _required(event_band_config, "annotation_position", "event_band")
+            ),
+        )
+        hex_to_rgb(event_band.fill_color)
+        hex_to_rgb(event_band.annotation_color)
         return Theme(
             name=name,
             width=_positive_int(_required(canvas, "width", "canvas"), "canvas.width"),
@@ -287,6 +331,7 @@ def _theme_from_mapping(name: str, config: dict[str, Any]) -> Theme:
                 heatmap_weights=weights,
                 gauge_weights=(gauge_weights[0], gauge_weights[1]),
             ),
+            event_band=event_band,
             line_width=_positive_int(
                 _required(marks, "line_width", "marks"), "marks.line_width"
             ),
@@ -316,6 +361,10 @@ def _theme_from_mapping(name: str, config: dict[str, Any]) -> Theme:
                 "positions.axis_title_gutter",
             ),
             hover_mode=str(_required(config, "hover_mode", "root")),
+            responsive=_boolean(config.get("responsive", False), "responsive"),
+            show_title_accent=_boolean(
+                config.get("show_title_accent", True), "show_title_accent"
+            ),
         )
     except (TypeError, ValueError) as error:
         if isinstance(error, ThemeConfigurationError):
