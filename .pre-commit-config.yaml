@@ -27,3 +27,9 @@ repos:
         entry: uv run ruff format
         language: system
         types: [python]
+
+      - id: pytest
+        name: Pytest coverage
+        entry: uv run pytest --cov=wood_charts --cov-report=term-missing
+        language: system
+        pass_filenames: false
