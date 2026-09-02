@@ -14,15 +14,25 @@ from wood_charts import Theme, ThemeConfigurationError, load_theme
 from wood_charts.charts import (
     area_chart,
     bar_chart,
+    box_chart,
     combo_chart,
     donut_chart,
+    dot_chart,
+    dumbbell_chart,
     gauge_chart,
+    grouped_bar_chart,
     heatmap_chart,
+    histogram_chart,
+    kpi_cards,
     line_chart,
     range_bar_chart,
+    scatter_chart,
+    slope_chart,
     stacked_bar_chart,
+    waterfall_chart,
 )
 from wood_charts.colors import blend_color, color_with_alpha, hex_to_rgb
+from wood_charts.export import export_chart
 
 
 @pytest.mark.parametrize(
@@ -55,6 +65,21 @@ def test_color_utilities_and_derived_palette() -> None:
         theme.colors.neutral_strong,
         theme.colors.neutral,
     )
+
+
+@pytest.mark.parametrize(
+    ("function", "arguments", "message"),
+    [
+        (hex_to_rgb, ("#123",), "six-digit"),
+        (color_with_alpha, ("#002F6C", 1.1), "Alpha"),
+        (blend_color, ("#000000", "#FFFFFF", -0.1), "weight"),
+    ],
+)
+def test_color_utilities_reject_invalid_values(
+    function: Callable[..., object], arguments: tuple[object, ...], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        function(*arguments)
 
 
 def test_powerpoint_2_1_reserves_header_space_for_titles() -> None:
@@ -326,6 +351,64 @@ def test_chart_functions_return_styled_figures(
     assert isinstance(figure, go.Figure)
     assert figure.data[0].type == trace_type
     assert (figure.layout.width, figure.layout.height) == (theme.width, theme.height)
+
+
+def test_remaining_chart_constructors_apply_semantic_defaults() -> None:
+    theme = load_theme("powerpoint_2_1")
+    values = pd.DataFrame(
+        {
+            "category": ["A", "B"],
+            "value": [3, 4],
+            "other": [2, 5],
+            "start": [1, 2],
+            "end": [4, 5],
+            "measure": ["relative", "total"],
+        }
+    )
+    grouped = grouped_bar_chart(values, "category", ["value", "other"], theme)
+    scatter = scatter_chart(values, "value", "other", theme)
+    dots = dot_chart(values, "value", "category", theme, sort=False)
+    histogram = histogram_chart(values, "value", theme, bins=4)
+    box = box_chart(values, "category", "value", theme)
+    waterfall = waterfall_chart(values, "category", "value", "measure", theme)
+    slope = slope_chart(values, "start", "end", "category", theme)
+    dumbbell = dumbbell_chart(values, "category", "start", "end", theme)
+    cards = kpi_cards(
+        [
+            {"label": "Sessions", "value": 120, "previous": 100, "format": ","},
+            {"label": "Orders", "value": 8, "previous": 10, "format": ","},
+        ],
+        theme,
+    )
+    assert grouped.layout.barmode == "group"
+    assert scatter.data[0].marker.size == theme.marker_size + 4
+    assert dots.data[0].mode == "markers+text"
+    assert histogram.data[0].nbinsx == 4
+    assert len(box.data) == 2
+    assert waterfall.data[0].type == "waterfall"
+    assert len(slope.data) == 2
+    assert len(dumbbell.data) == 4
+    assert len(cards.layout.annotations) == 6
+
+
+def test_export_chart_applies_theme_dimensions_and_svg_transparency(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[tuple[go.Figure, str, dict[str, object]]] = []
+
+    def write_image_stub(figure: go.Figure, path: str, **kwargs: object) -> None:
+        calls.append((figure, path, kwargs))
+
+    monkeypatch.setattr(go.Figure, "write_image", write_image_stub)
+    theme = load_theme("notebook")
+    figure = go.Figure()
+    export_chart(figure, tmp_path / "chart.svg", theme=theme)
+    export_chart(figure, tmp_path / "chart.png")
+    svg_figure, _, svg_options = calls[0]
+    assert svg_options == {"width": 960, "height": 600}
+    assert svg_figure.layout.paper_bgcolor == "rgba(0,0,0,0)"
+    assert svg_figure.layout.plot_bgcolor == "rgba(0,0,0,0)"
+    assert calls[1][2] == {}
 
 
 def test_stacked_percent_range_and_area_fill() -> None:
