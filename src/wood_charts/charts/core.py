@@ -2,15 +2,26 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Any
+from collections.abc import Collection, Sequence
+from typing import Any, NotRequired, TypedDict
 
 import plotly.graph_objects as go
 
+from ..figure import ResponsiveFigure
 from ..layout import apply_default_design, apply_overrides
 from ..theme import Theme
 
 Data = Any
+
+
+class EventBandDefinition(TypedDict):
+    """A vertical time or category range highlighted behind a line chart."""
+
+    start: Any
+    end: Any
+    label: NotRequired[str]
+    opacity: NotRequired[float]
+    annotation_position: NotRequired[str]
 
 
 def _finish(
@@ -24,6 +35,8 @@ def _finish(
     x_axis_title: str | None = None,
     y_axis_title: str | None = None,
 ) -> go.Figure:
+    if theme.responsive:
+        fig = ResponsiveFigure(fig)
     return apply_overrides(
         apply_default_design(
             fig,
@@ -49,6 +62,7 @@ def line_chart(
     subtitle: str | None = None,
     source: str | None = None,
     names: Sequence[str] | None = None,
+    event_bands: Sequence[EventBandDefinition] | None = None,
     layout_overrides: dict[str, Any] | None = None,
     x_axis_title: str | None = None,
     y_axis_title: str | None = None,
@@ -68,6 +82,7 @@ def line_chart(
                 marker={"color": color, "size": theme.marker_size},
             )
         )
+    _add_event_bands(fig, event_bands, theme)
     return _finish(
         fig,
         theme,
@@ -79,6 +94,37 @@ def line_chart(
         x_axis_title,
         y_axis_title,
     )
+
+
+def _add_event_bands(
+    figure: go.Figure,
+    event_bands: Sequence[EventBandDefinition] | None,
+    theme: Theme,
+) -> None:
+    """Add below-data vertical event bands using the active theme defaults."""
+    if event_bands is None:
+        return
+    for band in event_bands:
+        label = band.get("label")
+        options: dict[str, Any] = {
+            "x0": band["start"],
+            "x1": band["end"],
+            "fillcolor": theme.event_band.fill_color,
+            "opacity": band.get("opacity", theme.event_band.opacity),
+            "layer": "below",
+            "line_width": 0,
+        }
+        if label is not None:
+            options.update(
+                annotation_text=label,
+                annotation_position=band.get(
+                    "annotation_position", theme.event_band.annotation_position
+                ),
+                annotation_font_size=theme.event_band.annotation_size,
+                annotation_font_color=theme.event_band.annotation_color,
+                annotation_font_weight=theme.event_band.annotation_weight,
+            )
+        figure.add_vrect(**options)
 
 
 def bar_chart(
@@ -93,15 +139,26 @@ def bar_chart(
     source: str | None = None,
     sort: bool = False,
     show_values: bool = False,
+    focus: str | Collection[str] | None = None,
     layout_overrides: dict[str, Any] | None = None,
     x_axis_title: str | None = None,
     y_axis_title: str | None = None,
 ) -> go.Figure:
-    """Create a semantic single-series column or horizontal bar chart."""
+    """Create a single-series bar chart, optionally emphasizing categories."""
     values = data.sort_values(x if orientation == "horizontal" else y) if sort else data
     horizontal = orientation == "horizontal"
     category, measure = (y, x) if horizontal else (x, y)
-    colors = [theme.colors.series_palette[index % 4] for index in range(len(values))]
+    colors = [theme.colors.primary] * len(values)
+    if focus is not None:
+        focused_categories = {focus} if isinstance(focus, str) else set(focus)
+        colors = [
+            (
+                theme.colors.primary
+                if value in focused_categories
+                else theme.colors.neutral_light
+            )
+            for value in values[category]
+        ]
     fig = go.Figure(
         go.Bar(
             x=values[measure] if horizontal else values[category],

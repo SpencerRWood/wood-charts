@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.io as pio
 import pytest
 
 from wood_charts import Theme, ThemeConfigurationError, load_theme
@@ -30,6 +31,7 @@ from wood_charts.colors import blend_color, color_with_alpha, hex_to_rgb
         ("powerpoint_2_1", (1600, 800)),
         ("powerpoint_16_9", (1600, 900)),
         ("latex_3_2", (1200, 800)),
+        ("notebook", (960, 600)),
     ],
 )
 def test_bundled_themes_resolve_inherited_dimensions(
@@ -58,6 +60,194 @@ def test_color_utilities_and_derived_palette() -> None:
 def test_powerpoint_2_1_reserves_header_space_for_titles() -> None:
     theme = load_theme("powerpoint_2_1")
     assert theme.margin.top == 197
+
+
+def test_notebook_theme_uses_compact_tokens_for_interactive_output() -> None:
+    notebook = load_theme("notebook")
+    base = load_theme("powerpoint_2_1")
+    assert (
+        notebook.margin.left,
+        notebook.margin.right,
+        notebook.margin.top,
+        notebook.margin.bottom,
+    ) == (110, 60, 95, 80)
+    assert notebook.typography.title_size < base.typography.title_size
+    assert notebook.typography.tick_size < base.typography.tick_size
+    assert notebook.line_width < base.line_width
+    assert notebook.secondary_line_width < base.secondary_line_width
+    assert notebook.marker_size < base.marker_size
+    assert notebook.responsive is True
+    assert notebook.show_title_accent is False
+
+
+def test_notebook_theme_creates_responsive_figures() -> None:
+    theme = load_theme("notebook")
+    figure = line_chart(
+        pd.DataFrame({"month": ["Jan"], "sessions": [4]}),
+        "month",
+        "sessions",
+        theme,
+    )
+    assert figure.layout.width is None
+    assert figure.layout.height == 600
+    assert figure.layout.autosize is True
+
+
+def test_line_chart_has_no_event_bands_by_default() -> None:
+    figure = line_chart(
+        pd.DataFrame({"day": [1, 2], "sessions": [4, 5]}),
+        "day",
+        "sessions",
+        load_theme("notebook"),
+    )
+    assert not figure.layout.shapes
+    assert not figure.layout.annotations
+
+
+def test_line_chart_adds_a_labeled_event_band_using_theme_defaults() -> None:
+    theme = load_theme("notebook")
+    figure = line_chart(
+        pd.DataFrame({"day": [1, 2], "sessions": [4, 5]}),
+        "day",
+        "sessions",
+        theme,
+        event_bands=[{"start": 1, "end": 1.5, "label": "Campaign"}],
+    )
+    band = figure.layout.shapes[0]
+    annotation = figure.layout.annotations[0]
+    assert (band.x0, band.x1) == (1, 1.5)
+    assert band.fillcolor == theme.event_band.fill_color
+    assert band.opacity == theme.event_band.opacity
+    assert band.layer == "below"
+    assert band.line.width == 0
+    assert annotation.text == "Campaign"
+    assert annotation.font.size == theme.event_band.annotation_size
+    assert annotation.font.color == theme.event_band.annotation_color
+    assert annotation.font.weight == theme.event_band.annotation_weight
+
+
+def test_line_chart_adds_multiple_event_bands_with_overrides() -> None:
+    theme = load_theme("notebook")
+    figure = line_chart(
+        pd.DataFrame({"day": [1, 2, 3], "sessions": [4, 5, 6]}),
+        "day",
+        "sessions",
+        theme,
+        event_bands=[
+            {"start": 1, "end": 1.5, "label": "Launch"},
+            {
+                "start": 2,
+                "end": 2.5,
+                "label": "Sale",
+                "opacity": 0.30,
+                "annotation_position": "bottom right",
+            },
+        ],
+    )
+    assert len(figure.layout.shapes) == 2
+    assert tuple(band.opacity for band in figure.layout.shapes) == (
+        theme.event_band.opacity,
+        0.30,
+    )
+    assert tuple(annotation.text for annotation in figure.layout.annotations) == (
+        "Launch",
+        "Sale",
+    )
+    assert figure.layout.annotations[1].xanchor == "right"
+    assert figure.layout.annotations[1].yanchor == "bottom"
+
+
+def test_notebook_theme_omits_the_title_accent() -> None:
+    figure = line_chart(
+        pd.DataFrame({"month": ["Jan"], "sessions": [4]}),
+        "month",
+        "sessions",
+        load_theme("notebook"),
+        title="Sessions",
+    )
+    assert not figure.layout.shapes
+
+
+def test_notebook_theme_keeps_source_captions_inside_the_bottom_margin() -> None:
+    figure = line_chart(
+        pd.DataFrame({"month": ["Jan"], "sessions": [4]}),
+        "month",
+        "sessions",
+        load_theme("notebook"),
+        source="Analytics platform",
+    )
+    source = figure.layout.annotations[0]
+    assert source.text == "Source: Analytics platform"
+    assert source.y == -0.13
+
+
+def test_notebook_theme_uses_auto_margin_for_axis_titles() -> None:
+    figure = bar_chart(
+        pd.DataFrame({"event_type": ["page_view"], "event_count": [1]}),
+        "event_count",
+        "event_type",
+        load_theme("notebook"),
+        orientation="horizontal",
+        x_axis_title="Count",
+        y_axis_title="Event Type",
+    )
+    assert figure.layout.xaxis.automargin is True
+    assert figure.layout.yaxis.automargin is True
+    assert figure.layout.yaxis.title.text == "Event Type"
+    assert not any(
+        annotation.text == "Event Type" for annotation in figure.layout.annotations
+    )
+
+
+def test_notebook_theme_enables_responsive_show_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def show_stub(*_args: object, **kwargs: object) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(pio, "show", show_stub)
+    figure = line_chart(
+        pd.DataFrame({"month": ["Jan"], "sessions": [4]}),
+        "month",
+        "sessions",
+        load_theme("notebook"),
+    )
+    figure.show()
+    assert captured["config"] == {"responsive": True}
+
+
+def test_bar_chart_uses_primary_bars_and_can_focus_a_category() -> None:
+    theme = load_theme("notebook")
+    data = pd.DataFrame(
+        {"event_type": ["page_view", "purchase"], "event_count": [10, 2]}
+    )
+    default = bar_chart(
+        data, "event_count", "event_type", theme, orientation="horizontal"
+    )
+    focused = bar_chart(
+        data,
+        "event_count",
+        "event_type",
+        theme,
+        orientation="horizontal",
+        focus="purchase",
+    )
+    multiple_focused = bar_chart(
+        data,
+        "event_count",
+        "event_type",
+        theme,
+        orientation="horizontal",
+        focus=["page_view", "purchase"],
+    )
+    assert default.data[0].marker.color == (theme.colors.primary,) * 2
+    assert focused.data[0].marker.color == (
+        theme.colors.neutral_light,
+        theme.colors.primary,
+    )
+    assert multiple_focused.data[0].marker.color == (theme.colors.primary,) * 2
 
 
 def test_themes_reserve_horizontal_space_for_axis_titles() -> None:

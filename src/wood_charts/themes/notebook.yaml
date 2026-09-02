@@ -1,0 +1,42 @@
+extends: base.yaml
+
+canvas: {width: 960, height: 600}
+
+responsive: true
+
+show_title_accent: false
+
+typography:
+  title_size: 26
+  title_weight: 600
+  subtitle_size: 17
+  subtitle_weight: 400
+  axis_title_size: 16
+  tick_size: 14
+  legend_size: 14
+  annotation_size: 16
+  source_size: 12
+
+event_band:
+  annotation_size: 12
+
+margin:
+  left: 110
+  right: 60
+  top: 95
+  bottom: 80
+
+marks:
+  line_width: 3
+  secondary_line_width: 2
+  marker_size: 6
+
+positions:
+  accent_x_end: 0.10
+  accent_y_start: 1.245
+  accent_y_end: 1.26
+  title_y: 1.17
+  subtitle_y: 1.09
+  legend_y: 1.035
+  source_y: -0.13
+  axis_title_gutter: 22
