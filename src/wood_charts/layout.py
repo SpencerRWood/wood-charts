@@ -50,7 +50,8 @@ def apply_default_design(
             "x": 0,
             "xanchor": "left",
             "y": theme.legend_y,
-            "yanchor": "top",
+            "yanchor": "bottom" if theme.responsive else "top",
+            "maxheight": 0.12 if theme.responsive else None,
             "font": {
                 "family": typography.family,
                 "size": typography.legend_size,
