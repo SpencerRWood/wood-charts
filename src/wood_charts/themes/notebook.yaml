@@ -23,7 +23,7 @@ event_band:
 margin:
   left: 110
   right: 60
-  top: 95
+  top: 170
   bottom: 80
 
 marks:
@@ -35,8 +35,8 @@ positions:
   accent_x_end: 0.10
   accent_y_start: 1.245
   accent_y_end: 1.26
-  title_y: 1.17
-  subtitle_y: 1.09
-  legend_y: 1.035
+  title_y: 1.38
+  subtitle_y: 1.25
+  legend_y: 1.01
   source_y: -0.13
   axis_title_gutter: 22

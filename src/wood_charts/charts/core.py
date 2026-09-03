@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Sequence
+from math import isfinite
+from numbers import Real
 from typing import Any, NotRequired, TypedDict
 
 import plotly.graph_objects as go
 
+from ..colors import color_with_alpha
 from ..figure import ResponsiveFigure
 from ..layout import apply_default_design, apply_overrides
 from ..theme import Theme
@@ -22,6 +25,21 @@ class EventBandDefinition(TypedDict):
     label: NotRequired[str]
     opacity: NotRequired[float]
     annotation_position: NotRequired[str]
+
+
+class AxisBreakDefinition(TypedDict):
+    """A numeric y-axis interval to omit while visibly marking the break."""
+
+    start: float
+    end: float
+
+
+def _series_columns(y: str | Sequence[str]) -> list[str]:
+    return [y] if isinstance(y, str) else list(y)
+
+
+def _series_name(column: str, index: int, names: Sequence[str] | None) -> str:
+    return names[index] if names else column.replace("_", " ").title()
 
 
 def _finish(
@@ -63,12 +81,13 @@ def line_chart(
     source: str | None = None,
     names: Sequence[str] | None = None,
     event_bands: Sequence[EventBandDefinition] | None = None,
+    axis_break: AxisBreakDefinition | None = None,
     layout_overrides: dict[str, Any] | None = None,
     x_axis_title: str | None = None,
     y_axis_title: str | None = None,
 ) -> go.Figure:
     """Create one or more line-and-marker series."""
-    columns = [y] if isinstance(y, str) else list(y)
+    columns = _series_columns(y)
     fig = go.Figure()
     for index, column in enumerate(columns):
         color = theme.colors.series_palette[index % len(theme.colors.series_palette)]
@@ -77,22 +96,27 @@ def line_chart(
                 x=data[x],
                 y=data[column],
                 mode="lines+markers",
-                name=(names[index] if names else str(column).replace("_", " ").title()),
+                name=_series_name(column, index, names),
                 line={"color": color, "width": theme.line_width},
                 marker={"color": color, "size": theme.marker_size},
             )
         )
     _add_event_bands(fig, event_bands, theme)
-    return _finish(
-        fig,
+    return _add_y_axis_break(
+        _finish(
+            fig,
+            theme,
+            title,
+            subtitle,
+            source,
+            len(columns) > 1,
+            layout_overrides,
+            x_axis_title,
+            y_axis_title,
+        ),
+        axis_break,
         theme,
-        title,
-        subtitle,
-        source,
-        len(columns) > 1,
-        layout_overrides,
-        x_axis_title,
-        y_axis_title,
+        auto=True,
     )
 
 
@@ -125,6 +149,89 @@ def _add_event_bands(
                 annotation_font_weight=theme.event_band.annotation_weight,
             )
         figure.add_vrect(**options)
+
+
+def _add_y_axis_break(
+    figure: go.Figure,
+    axis_break: AxisBreakDefinition | None,
+    theme: Theme,
+    *,
+    auto: bool = False,
+) -> go.Figure:
+    """Truncate a numeric y-axis and mark the omission with a Z-shaped path."""
+    if axis_break is None and auto:
+        axis_break = _automatic_y_axis_break(figure)
+    if axis_break is None:
+        return figure
+    start, end = axis_break["start"], axis_break["end"]
+    if start >= end:
+        msg = "axis_break.start must be less than axis_break.end."
+        raise ValueError(msg)
+    figure.update_yaxes(
+        range=[end, _axis_break_upper_bound(figure, end)], autorange=False
+    )
+    figure.add_shape(
+        type="path",
+        path="M -0.008,0.035 L 0.008,0.027 L -0.008,0.019 L 0.008,0.011",
+        xref="paper",
+        yref="paper",
+        layer="above",
+        line={
+            "color": theme.colors.text_secondary,
+            "width": min(theme.secondary_line_width, 2),
+        },
+    )
+    return figure
+
+
+def _automatic_y_axis_break(figure: go.Figure) -> AxisBreakDefinition | None:
+    """Return a break when Plotly's natural numeric range materially omits zero."""
+    values = _numeric_trace_values(figure)
+    if not values:
+        return None
+    minimum, maximum = min(values), max(values)
+    span = maximum - minimum
+    if minimum <= 0 or span <= 0 or minimum <= max(span * 0.25, 1.0):
+        return None
+    return {"start": 0, "end": minimum - max(span * 0.06, 1.0)}
+
+
+def _axis_break_upper_bound(figure: go.Figure, lower_bound: float) -> float:
+    """Calculate a stable padded upper y-axis bound from figure traces."""
+    candidates = [lower_bound]
+    stacked_totals: dict[str, list[float]] = {}
+    for trace in figure.data:
+        trace_values = trace.y if trace.y is not None else ()
+        values = _numeric_values(trace_values)
+        stackgroup = getattr(trace, "stackgroup", None)
+        if stackgroup:
+            totals = stacked_totals.setdefault(stackgroup, [0.0] * len(values))
+            for index, value in enumerate(values):
+                totals[index] += value
+        else:
+            candidates.extend(values)
+    candidates.extend(value for totals in stacked_totals.values() for value in totals)
+    maximum = max(candidates)
+    padding = max((maximum - lower_bound) * 0.06, 1.0)
+    return maximum + padding
+
+
+def _numeric_trace_values(figure: go.Figure) -> list[float]:
+    """Return finite numeric y-values from all traces in a figure."""
+    return [
+        value
+        for trace in figure.data
+        for value in _numeric_values(trace.y if trace.y is not None else ())
+    ]
+
+
+def _numeric_values(values: Sequence[Any]) -> list[float]:
+    """Filter a sequence down to finite real numbers."""
+    return [
+        float(value)
+        for value in values
+        if isinstance(value, Real) and not isinstance(value, bool) and isfinite(value)
+    ]
 
 
 def bar_chart(
@@ -260,30 +367,51 @@ def _bar_series(
     return fig
 
 
-def area_chart(data: Data, x: str, y: str, theme: Theme, **kwargs: Any) -> go.Figure:
-    """Create a filled primary-series area chart."""
-    fig = go.Figure(
-        go.Scatter(
-            x=data[x],
-            y=data[y],
-            mode="lines",
-            name=y.replace("_", " ").title(),
-            line={"color": theme.colors.primary, "width": theme.line_width},
-            fill="tozeroy",
-            fillcolor=theme.colors.primary_area,
-        )
-    )
+def area_chart(
+    data: Data,
+    x: str,
+    y: str | Sequence[str],
+    theme: Theme,
+    *,
+    names: Sequence[str] | None = None,
+    event_bands: Sequence[EventBandDefinition] | None = None,
+    axis_break: AxisBreakDefinition | None = None,
+    **kwargs: Any,
+) -> go.Figure:
+    """Create a filled single-series or stacked multi-series area chart."""
+    columns = _series_columns(y)
+    fig = go.Figure()
+    for index, column in enumerate(columns):
+        color = theme.colors.series_palette[index % len(theme.colors.series_palette)]
+        trace_options: dict[str, Any] = {
+            "x": data[x],
+            "y": data[column],
+            "mode": "lines",
+            "name": _series_name(column, index, names),
+            "line": {"color": color, "width": theme.line_width},
+            "fillcolor": color_with_alpha(color, theme.colors.area_alpha),
+        }
+        if len(columns) == 1:
+            trace_options["fill"] = "tozeroy"
+        else:
+            trace_options["stackgroup"] = "area"
+        fig.add_trace(go.Scatter(**trace_options))
     fig.update_yaxes(rangemode="tozero")
-    return _finish(
-        fig,
+    _add_event_bands(fig, event_bands, theme)
+    return _add_y_axis_break(
+        _finish(
+            fig,
+            theme,
+            kwargs.get("title"),
+            kwargs.get("subtitle"),
+            kwargs.get("source"),
+            len(columns) > 1,
+            kwargs.get("layout_overrides"),
+            kwargs.get("x_axis_title"),
+            kwargs.get("y_axis_title"),
+        ),
+        axis_break,
         theme,
-        kwargs.get("title"),
-        kwargs.get("subtitle"),
-        kwargs.get("source"),
-        False,
-        kwargs.get("layout_overrides"),
-        kwargs.get("x_axis_title"),
-        kwargs.get("y_axis_title"),
     )
 
 

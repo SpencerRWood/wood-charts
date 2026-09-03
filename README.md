@@ -104,6 +104,24 @@ from wood_charts.charts import (
 )
 ```
 
+For numeric y-axis values with a large omitted baseline, `line_chart()` and
+`area_chart()` can display an explicit break marker and start the visible axis
+at the end of that interval:
+
+```python
+figure = line_chart(
+    data,
+    "date",
+    "sessions",
+    theme,
+    axis_break={"start": 0, "end": 2500},
+)
+```
+
+`line_chart()` also applies this marker automatically when its positive data
+range materially omits zero. Area charts keep a zero baseline by default, so
+use `axis_break` when deliberately truncating a filled area.
+
 All constructors accept a loaded `Theme` plus title, subtitle, source, and
 advanced layout overrides as appropriate to the chart type. Cartesian charts
 also support optional `x_axis_title` and `y_axis_title`; `combo_chart` supports

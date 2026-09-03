@@ -95,7 +95,7 @@ def test_notebook_theme_uses_compact_tokens_for_interactive_output() -> None:
         notebook.margin.right,
         notebook.margin.top,
         notebook.margin.bottom,
-    ) == (110, 60, 95, 80)
+    ) == (110, 60, 170, 80)
     assert notebook.typography.title_size < base.typography.title_size
     assert notebook.typography.tick_size < base.typography.tick_size
     assert notebook.line_width < base.line_width
@@ -120,13 +120,37 @@ def test_notebook_theme_creates_responsive_figures() -> None:
 
 def test_line_chart_has_no_event_bands_by_default() -> None:
     figure = line_chart(
-        pd.DataFrame({"day": [1, 2], "sessions": [4, 5]}),
+        pd.DataFrame({"day": [1, 2], "sessions": [0, 5]}),
         "day",
         "sessions",
         load_theme("notebook"),
     )
     assert not figure.layout.shapes
     assert not figure.layout.annotations
+
+
+def test_line_chart_marks_an_automatically_truncated_positive_y_axis() -> None:
+    figure = line_chart(
+        pd.DataFrame({"day": [1, 2, 3], "sessions": [380, 450, 520]}),
+        "day",
+        "sessions",
+        load_theme("notebook"),
+    )
+    assert figure.layout.yaxis.range[0] < 380
+    assert figure.layout.yaxis.range[0] > 0
+    assert figure.layout.yaxis.autorange is False
+    assert figure.layout.shapes[0].type == "path"
+
+
+def test_line_chart_keeps_zero_in_range_without_an_automatic_axis_break() -> None:
+    figure = line_chart(
+        pd.DataFrame({"day": [1, 2, 3], "sessions": [0, 50, 100]}),
+        "day",
+        "sessions",
+        load_theme("notebook"),
+    )
+    assert figure.layout.yaxis.range is None
+    assert not figure.layout.shapes
 
 
 def test_line_chart_adds_a_labeled_event_band_using_theme_defaults() -> None:
@@ -169,8 +193,11 @@ def test_line_chart_adds_multiple_event_bands_with_overrides() -> None:
             },
         ],
     )
-    assert len(figure.layout.shapes) == 2
-    assert tuple(band.opacity for band in figure.layout.shapes) == (
+    event_band_shapes = [
+        shape for shape in figure.layout.shapes if shape.type == "rect"
+    ]
+    assert len(event_band_shapes) == 2
+    assert tuple(band.opacity for band in event_band_shapes) == (
         theme.event_band.opacity,
         0.30,
     )
@@ -180,6 +207,142 @@ def test_line_chart_adds_multiple_event_bands_with_overrides() -> None:
     )
     assert figure.layout.annotations[1].xanchor == "right"
     assert figure.layout.annotations[1].yanchor == "bottom"
+
+
+def test_notebook_legends_reserve_space_above_event_bands() -> None:
+    figure = line_chart(
+        pd.DataFrame({"day": [1, 2], "organic": [4, 5], "paid": [2, 3]}),
+        "day",
+        ["organic", "paid"],
+        load_theme("notebook"),
+        event_bands=[{"start": 1, "end": 1.5, "label": "Campaign"}],
+    )
+    assert figure.layout.legend.yanchor == "bottom"
+    assert figure.layout.legend.maxheight == 0.12
+
+
+def test_line_chart_supports_a_labeled_numeric_y_axis_break() -> None:
+    figure = line_chart(
+        pd.DataFrame({"day": [1, 2], "sessions": [2600, 2800]}),
+        "day",
+        "sessions",
+        load_theme("notebook"),
+        axis_break={"start": 0, "end": 2500},
+    )
+    assert figure.layout.yaxis.range[0] == 2500
+    assert figure.layout.yaxis.range[1] > 2800
+    assert figure.layout.yaxis.autorange is False
+    assert len(figure.layout.shapes) == 1
+    marker = figure.layout.shapes[0]
+    assert marker.type == "path"
+    assert marker.layer == "above"
+    assert marker.path.startswith("M -0.008,0.035")
+    assert marker.line.color == load_theme("notebook").colors.text_secondary
+    assert marker.line.width == 2
+    assert not figure.layout.annotations
+
+
+def test_area_chart_supports_y_axis_breaks_and_rejects_invalid_ranges() -> None:
+    data = pd.DataFrame({"day": [1, 2], "sessions": [2600, 2800]})
+    figure = area_chart(
+        data,
+        "day",
+        "sessions",
+        load_theme("notebook"),
+        axis_break={"start": 0, "end": 2500},
+    )
+    assert figure.layout.yaxis.range[0] == 2500
+    assert figure.layout.yaxis.range[1] > 2800
+    assert figure.layout.yaxis.autorange is False
+    with pytest.raises(ValueError, match="start must be less"):
+        area_chart(
+            data,
+            "day",
+            "sessions",
+            load_theme("notebook"),
+            axis_break={"start": 2500, "end": 0},
+        )
+
+
+def test_stacked_area_chart_supports_event_bands_and_axis_breaks() -> None:
+    figure = area_chart(
+        pd.DataFrame({"day": [1, 2], "organic": [2600, 2800], "paid": [200, 300]}),
+        "day",
+        ["organic", "paid"],
+        load_theme("notebook"),
+        event_bands=[{"start": 1, "end": 1.5, "label": "Campaign"}],
+        axis_break={"start": 0, "end": 2500},
+    )
+    assert tuple(trace.stackgroup for trace in figure.data) == ("area", "area")
+    assert tuple(shape.type for shape in figure.layout.shapes) == ("rect", "path")
+    assert figure.layout.shapes[1].layer == "above"
+    assert tuple(annotation.text for annotation in figure.layout.annotations) == (
+        "Campaign",
+    )
+
+
+def test_area_chart_preserves_single_series_behavior() -> None:
+    theme = load_theme("notebook")
+    figure = area_chart(
+        pd.DataFrame({"day": [1, 2], "sessions": [4, 5]}),
+        "day",
+        "sessions",
+        theme,
+    )
+    trace = figure.data[0]
+    assert len(figure.data) == 1
+    assert trace.fill == "tozeroy"
+    assert trace.stackgroup is None
+    assert trace.fillcolor == theme.colors.primary_area
+    assert not figure.layout.shapes
+
+
+def test_area_chart_stacks_multiple_series_in_supplied_order() -> None:
+    theme = load_theme("notebook")
+    figure = area_chart(
+        pd.DataFrame({"day": [1, 2], "organic": [4, 5], "paid": [2, 3]}),
+        "day",
+        ["organic", "paid"],
+        theme,
+        names=["Organic", "Paid"],
+    )
+    assert tuple(trace.name for trace in figure.data) == ("Organic", "Paid")
+    assert tuple(trace.stackgroup for trace in figure.data) == ("area", "area")
+    assert tuple(tuple(trace.y) for trace in figure.data) == ((4, 5), (2, 3))
+    assert figure.layout.showlegend is True
+
+
+def test_area_chart_adds_one_event_band() -> None:
+    figure = area_chart(
+        pd.DataFrame({"day": [1, 2], "sessions": [4, 5]}),
+        "day",
+        "sessions",
+        load_theme("notebook"),
+        event_bands=[{"start": 1, "end": 1.5, "label": "Campaign"}],
+    )
+    assert len(figure.layout.shapes) == 1
+    assert figure.layout.shapes[0].layer == "below"
+    assert figure.layout.annotations[0].text == "Campaign"
+
+
+def test_area_chart_adds_multiple_event_bands_with_multiple_series() -> None:
+    figure = area_chart(
+        pd.DataFrame({"day": [1, 2, 3], "organic": [4, 5, 6], "paid": [2, 3, 4]}),
+        "day",
+        ["organic", "paid"],
+        load_theme("notebook"),
+        event_bands=[
+            {"start": 1, "end": 1.5, "label": "Launch"},
+            {"start": 2, "end": 2.5, "label": "Sale", "opacity": 0.30},
+        ],
+    )
+    assert len(figure.data) == 2
+    assert len(figure.layout.shapes) == 2
+    assert tuple(band.opacity for band in figure.layout.shapes) == (0.14, 0.30)
+    assert tuple(annotation.text for annotation in figure.layout.annotations) == (
+        "Launch",
+        "Sale",
+    )
 
 
 def test_notebook_theme_omits_the_title_accent() -> None:
