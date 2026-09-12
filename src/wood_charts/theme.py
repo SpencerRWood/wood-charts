@@ -59,6 +59,9 @@ class Colors:
     white: str
     area_alpha: float
     heatmap_weights: tuple[float, ...]
+    heatmap_annotation_light: str
+    heatmap_annotation_dark: str
+    heatmap_annotation_threshold: float
     gauge_weights: tuple[float, float]
 
     @property
@@ -239,6 +242,20 @@ def _theme_from_mapping(name: str, config: dict[str, Any]) -> Theme:
         if not 0 <= area_alpha <= 1:
             msg = "colors.derived.area_alpha must be between 0 and 1."
             raise ThemeConfigurationError(msg)
+        heatmap_annotation_threshold = float(
+            _required(derived, "heatmap_annotation_threshold", "colors.derived")
+        )
+        if not 0 <= heatmap_annotation_threshold <= 1:
+            msg = "colors.derived.heatmap_annotation_threshold must be between 0 and 1."
+            raise ThemeConfigurationError(msg)
+        heatmap_annotation_light = str(
+            _required(derived, "heatmap_annotation_light", "colors.derived")
+        )
+        heatmap_annotation_dark = str(
+            _required(derived, "heatmap_annotation_dark", "colors.derived")
+        )
+        hex_to_rgb(heatmap_annotation_light)
+        hex_to_rgb(heatmap_annotation_dark)
         typography = Typography(
             family=str(_required(type_config, "family", "typography")),
             **{
@@ -329,6 +346,9 @@ def _theme_from_mapping(name: str, config: dict[str, Any]) -> Theme:
                 },
                 area_alpha=area_alpha,
                 heatmap_weights=weights,
+                heatmap_annotation_light=heatmap_annotation_light,
+                heatmap_annotation_dark=heatmap_annotation_dark,
+                heatmap_annotation_threshold=heatmap_annotation_threshold,
                 gauge_weights=(gauge_weights[0], gauge_weights[1]),
             ),
             event_band=event_band,

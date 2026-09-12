@@ -65,6 +65,9 @@ def test_color_utilities_and_derived_palette() -> None:
         theme.colors.neutral_strong,
         theme.colors.neutral,
     )
+    assert theme.colors.heatmap_annotation_light == theme.colors.text_primary
+    assert theme.colors.heatmap_annotation_dark == theme.colors.white
+    assert theme.colors.heatmap_annotation_threshold == 0.60
 
 
 @pytest.mark.parametrize(
@@ -464,6 +467,185 @@ def test_custom_theme_deep_merges_parent(tmp_path: Path) -> None:
     assert theme.colors.primary == "#009B4E"
     assert theme.colors.secondary == "#4A90C2"
     assert theme.colors.primary_area == "rgba(0, 155, 78, 0.2)"
+
+
+def test_heatmap_chart_preserves_default_matrix_order_and_scale() -> None:
+    theme = load_theme("notebook")
+    figure = heatmap_chart(
+        pd.DataFrame(
+            {
+                "to_page": ["product_page", "checkout"],
+                "from_home": [0.6, 0.2],
+                "from_cart": [0.1, 0.8],
+            }
+        ),
+        "to_page",
+        ["from_cart", "from_home"],
+        theme,
+    )
+    trace = figure.data[0]
+    assert tuple(trace.x) == ("product_page", "checkout")
+    assert tuple(trace.y) == ("from_cart", "from_home")
+    assert tuple(tuple(row) for row in trace.z) == ((0.1, 0.8), (0.6, 0.2))
+    assert trace.zmin is None
+    assert trace.zmax is None
+    assert trace.texttemplate is None
+    assert figure.layout.yaxis.showgrid is False
+
+
+def test_heatmap_chart_can_mask_zero_cells() -> None:
+    figure = heatmap_chart(
+        pd.DataFrame({"to_page": ["home", "checkout"], "from_home": [0, 0.4]}),
+        "to_page",
+        ["from_home"],
+        load_theme("notebook"),
+        mask_zero=True,
+    )
+    assert tuple(figure.data[0].z[0]) == (None, 0.4)
+
+
+def test_heatmap_chart_annotates_only_nonzero_values_as_percentages() -> None:
+    figure = heatmap_chart(
+        pd.DataFrame({"to_page": ["home", "checkout"], "from_home": [0, 0.42]}),
+        "to_page",
+        ["from_home"],
+        load_theme("notebook"),
+        annotate=True,
+        value_format=".0%",
+    )
+    trace = figure.data[0]
+    assert tuple(trace.z[0]) == (0, 0.42)
+    assert tuple(trace.text[0]) == ("", "42%")
+    assert trace.texttemplate is None
+    assert tuple(annotation.text for annotation in figure.layout.annotations) == (
+        "42%",
+    )
+    assert all("%{" not in value for row in trace.text for value in row)
+
+
+def test_heatmap_chart_omits_masked_zero_annotations() -> None:
+    figure = heatmap_chart(
+        pd.DataFrame({"to_page": ["home", "checkout"], "from_home": [0, 0.42]}),
+        "to_page",
+        ["from_home"],
+        load_theme("notebook"),
+        mask_zero=True,
+        annotate=True,
+        value_format=".0%",
+    )
+    trace = figure.data[0]
+    assert tuple(trace.z[0]) == (None, 0.42)
+    assert tuple(trace.text[0]) == ("", "42%")
+    assert tuple(annotation.text for annotation in figure.layout.annotations) == (
+        "42%",
+    )
+
+
+def test_heatmap_chart_formats_nonpercentage_annotations() -> None:
+    figure = heatmap_chart(
+        pd.DataFrame({"to_page": ["checkout"], "from_home": [0.426]}),
+        "to_page",
+        ["from_home"],
+        load_theme("notebook"),
+        annotate=True,
+        value_format=".2f",
+    )
+    assert tuple(figure.data[0].text[0]) == ("0.43",)
+
+
+def test_heatmap_chart_uses_contrast_aware_annotation_colors() -> None:
+    theme = load_theme("notebook")
+    figure = heatmap_chart(
+        pd.DataFrame({"to_page": ["home", "checkout"], "from_home": [0.2, 0.8]}),
+        "to_page",
+        ["from_home"],
+        theme,
+        annotate=True,
+        value_format=".0%",
+        zmin=0,
+        zmax=1,
+    )
+    annotations = figure.layout.annotations
+    assert tuple(annotation.text for annotation in annotations) == ("20%", "80%")
+    assert annotations[0].font.color == theme.colors.heatmap_annotation_light
+    assert annotations[1].font.color == theme.colors.heatmap_annotation_dark
+
+
+def test_heatmap_chart_can_disable_contrast_aware_annotations() -> None:
+    figure = heatmap_chart(
+        pd.DataFrame({"to_page": ["checkout"], "from_home": [0.42]}),
+        "to_page",
+        ["from_home"],
+        load_theme("notebook"),
+        annotate=True,
+        contrast_aware=False,
+    )
+    assert figure.data[0].texttemplate == "%{text}"
+    assert not figure.layout.annotations
+
+
+def test_heatmap_chart_formats_percentage_colorbar_ticks() -> None:
+    figure = heatmap_chart(
+        pd.DataFrame({"to_page": ["checkout"], "from_home": [0.42]}),
+        "to_page",
+        ["from_home"],
+        load_theme("notebook"),
+        value_format=".0%",
+    )
+    assert figure.data[0].colorbar.tickformat == ".0%"
+
+
+def test_heatmap_chart_formats_snake_case_display_labels() -> None:
+    figure = heatmap_chart(
+        pd.DataFrame({"to_page": ["product_page"], "from_home_page": [0.42]}),
+        "to_page",
+        ["from_home_page"],
+        load_theme("notebook"),
+        format_labels=True,
+    )
+    assert tuple(figure.data[0].x) == ("Product Page",)
+    assert tuple(figure.data[0].y) == ("From Home Page",)
+
+
+def test_heatmap_chart_supports_fixed_color_scale_and_titles() -> None:
+    figure = heatmap_chart(
+        pd.DataFrame({"to_page": ["checkout"], "from_home": [0.42]}),
+        "to_page",
+        ["from_home"],
+        load_theme("notebook"),
+        zmin=0,
+        zmax=1,
+        x_axis_title="To Page",
+        y_axis_title="From Page",
+        colorbar_title="Transition Probability",
+    )
+    trace = figure.data[0]
+    assert (trace.zmin, trace.zmax) == (0, 1)
+    assert figure.layout.xaxis.title.text == "To Page"
+    assert figure.layout.yaxis.title.text == "From Page"
+    assert trace.colorbar.title.text == "Transition Probability"
+
+
+def test_heatmap_chart_separates_source_from_x_axis_title() -> None:
+    theme = load_theme("notebook")
+    source = "Synthetic Website Data"
+    figure = heatmap_chart(
+        pd.DataFrame({"to_page": ["checkout"], "from_home": [0.42]}),
+        "to_page",
+        ["from_home"],
+        theme,
+        source=source,
+        x_axis_title="To Page",
+    )
+    source_annotation = next(
+        annotation
+        for annotation in figure.layout.annotations
+        if annotation.text == f"Source: {source}"
+    )
+    assert figure.layout.yaxis.showgrid is False
+    assert figure.layout.margin.b == 154
+    assert figure.layout.xaxis.title.standoff == 24
+    assert source_annotation.y == -0.45
 
 
 @pytest.mark.parametrize(
