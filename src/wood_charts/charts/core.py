@@ -583,28 +583,215 @@ def box_chart(
 
 
 def heatmap_chart(
-    data: Data, x: str, y_columns: Sequence[str], theme: Theme, **kwargs: Any
+    data: Data,
+    x: str,
+    y_columns: Sequence[str],
+    theme: Theme,
+    *,
+    title: str | None = None,
+    subtitle: str | None = None,
+    source: str | None = None,
+    mask_zero: bool = False,
+    annotate: bool = False,
+    value_format: str | None = None,
+    contrast_aware: bool = True,
+    annotation_contrast_threshold: float | None = None,
+    format_labels: bool = False,
+    zmin: float | None = None,
+    zmax: float | None = None,
+    x_axis_title: str | None = None,
+    y_axis_title: str | None = None,
+    colorbar_title: str | None = None,
+    layout_overrides: dict[str, Any] | None = None,
+    **_: Any,
 ) -> go.Figure:
-    """Create a background-to-primary sequential heatmap."""
-    fig = go.Figure(
-        go.Heatmap(
-            z=data[list(y_columns)].T.values,
-            x=data[x],
-            y=list(y_columns),
-            colorscale=theme.colors.sequential_scale,
-            showscale=True,
-        )
+    """Create a background-to-primary sequential heatmap.
+
+    The dataframe order supplies the x-axis order, while ``y_columns`` supplies
+    the y-axis order.  Zero masking and annotations are opt-in so ordinary
+    heatmaps retain their existing appearance.
+    """
+    columns = list(y_columns)
+    values = [list(row) for row in data[columns].T.values]
+    z_values = (
+        [[None if _is_zero_value(value) else value for value in row] for row in values]
+        if mask_zero
+        else values
     )
+    trace_options: dict[str, Any] = {
+        "z": z_values,
+        "x": _heatmap_labels(data[x], format_labels),
+        "y": _heatmap_labels(columns, format_labels),
+        "colorscale": theme.colors.sequential_scale,
+        "showscale": True,
+    }
+    if zmin is not None:
+        trace_options["zmin"] = zmin
+    if zmax is not None:
+        trace_options["zmax"] = zmax
+    if annotate:
+        annotation_text = _heatmap_annotation_text(values, value_format)
+        trace_options.update(
+            text=annotation_text,
+            texttemplate=None if contrast_aware else "%{text}",
+            textfont={
+                "family": theme.typography.family,
+                "size": theme.typography.annotation_size,
+                "color": theme.colors.text_primary,
+            },
+        )
+    if colorbar_title is not None or value_format is not None:
+        colorbar: dict[str, Any] = {}
+        if colorbar_title is not None:
+            colorbar["title"] = {
+                "text": colorbar_title,
+                "font": {
+                    "family": theme.typography.family,
+                    "size": theme.typography.axis_title_size,
+                    "color": theme.colors.text_primary,
+                },
+            }
+        if value_format is not None:
+            colorbar["tickformat"] = value_format
+        trace_options["colorbar"] = colorbar
+    fig = go.Figure(go.Heatmap(**trace_options))
     fig.update_yaxes(autorange="reversed", showgrid=False)
-    return _finish(
+    figure = _finish(
         fig,
         theme,
-        kwargs.get("title"),
-        kwargs.get("subtitle"),
-        kwargs.get("source"),
+        title,
+        subtitle,
+        source,
         False,
-        kwargs.get("layout_overrides"),
+        layout_overrides,
+        x_axis_title,
+        y_axis_title,
     )
+    figure.update_yaxes(showgrid=False)
+    _separate_heatmap_footer(figure, theme, source, x_axis_title)
+    if annotate and contrast_aware:
+        _add_heatmap_annotations(
+            figure,
+            x_values=trace_options["x"],
+            y_values=trace_options["y"],
+            values=values,
+            text=annotation_text,
+            theme=theme,
+            zmin=zmin,
+            zmax=zmax,
+            threshold=(
+                theme.colors.heatmap_annotation_threshold
+                if annotation_contrast_threshold is None
+                else annotation_contrast_threshold
+            ),
+        )
+    return figure
+
+
+def _is_zero_value(value: Any) -> bool:
+    """Return whether a heatmap value represents an exact numeric zero."""
+    return isinstance(value, Real) and not isinstance(value, bool) and value == 0
+
+
+def _heatmap_labels(values: Sequence[Any], format_labels: bool) -> list[Any]:
+    """Optionally turn source-friendly string categories into display labels."""
+    if not format_labels:
+        return list(values)
+    return [
+        value.replace("_", " ").title() if isinstance(value, str) else value
+        for value in values
+    ]
+
+
+def _format_heatmap_value(value: Any, value_format: str | None) -> str:
+    """Format a numeric heatmap value for a cell annotation."""
+    if value_format is None:
+        return str(value)
+    return format(value, value_format)
+
+
+def _separate_heatmap_footer(
+    figure: go.Figure,
+    theme: Theme,
+    source: str | None,
+    x_axis_title: str | None,
+) -> None:
+    """Keep a heatmap's source clear of its category labels and x-axis title."""
+    if source is None or x_axis_title is None:
+        return
+    footer_margin = max(
+        theme.margin.bottom,
+        theme.typography.tick_size * 9
+        + theme.typography.axis_title_size
+        + theme.typography.source_size,
+    )
+    figure.update_layout(margin={"b": footer_margin})
+    figure.update_xaxes(title_standoff=24)
+    source_text = f"Source: {source}"
+    for annotation in figure.layout.annotations:
+        if annotation.text == source_text:
+            annotation.y = -0.45
+            break
+
+
+def _heatmap_annotation_text(
+    values: Sequence[Sequence[Any]], value_format: str | None
+) -> list[list[str]]:
+    """Precompute display text while retaining numeric z-values for hover."""
+    return [
+        [
+            "" if _is_zero_value(value) else _format_heatmap_value(value, value_format)
+            for value in row
+        ]
+        for row in values
+    ]
+
+
+def _add_heatmap_annotations(
+    figure: go.Figure,
+    *,
+    x_values: Sequence[Any],
+    y_values: Sequence[Any],
+    values: Sequence[Sequence[Any]],
+    text: Sequence[Sequence[str]],
+    theme: Theme,
+    zmin: float | None,
+    zmax: float | None,
+    threshold: float,
+) -> None:
+    """Add per-cell annotation colors based on normalized heatmap intensity."""
+    if not 0 <= threshold <= 1:
+        msg = "annotation_contrast_threshold must be between 0 and 1."
+        raise ValueError(msg)
+    numeric_values = [value for row in values for value in _numeric_values(row)]
+    if not numeric_values:
+        return
+    lower_bound = min(numeric_values) if zmin is None else zmin
+    upper_bound = max(numeric_values) if zmax is None else zmax
+    scale_span = upper_bound - lower_bound
+    for y_value, row, text_row in zip(y_values, values, text, strict=True):
+        for x_value, value, label in zip(x_values, row, text_row, strict=True):
+            if not label or not isinstance(value, Real) or isinstance(value, bool):
+                continue
+            intensity = (
+                0 if scale_span <= 0 else (float(value) - lower_bound) / scale_span
+            )
+            color = (
+                theme.colors.heatmap_annotation_dark
+                if intensity >= threshold
+                else theme.colors.heatmap_annotation_light
+            )
+            figure.add_annotation(
+                x=x_value,
+                y=y_value,
+                text=label,
+                showarrow=False,
+                font={
+                    "family": theme.typography.family,
+                    "size": theme.typography.annotation_size,
+                    "color": color,
+                },
+            )
 
 
 def waterfall_chart(

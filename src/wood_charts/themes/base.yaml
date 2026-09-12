@@ -16,6 +16,9 @@ colors:
   derived:
     area_alpha: 0.20
     heatmap_weights: [0.08, 0.22, 0.45, 0.70, 1.0]
+    heatmap_annotation_light: "#1B1B1B"
+    heatmap_annotation_dark: "#FFFFFF"
+    heatmap_annotation_threshold: 0.60
     gauge_weights: [0.22, 0.45]
 typography:
   family: "IBM Plex Sans, Arial, sans-serif"
