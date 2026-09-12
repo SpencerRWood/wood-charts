@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.3.0 (2026-09-12)
+
+### Features
+
+- Enhance heatmap charts
+  ([`cb829f6`](https://github.com/SpencerRWood/wood-charts/commit/cb829f609616bcde200f9ae8c04429d0b8ba0e49))
+
+
 ## v0.2.0 (2026-09-03)
 
 ### Features

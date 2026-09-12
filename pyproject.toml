@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wood-charts"
-version = "0.2.0"
+version = "0.3.0"
 description = "Theme-driven Plotly chart constructors for presentation-ready charts."
 readme = "README.md"
 requires-python = ">=3.11"
